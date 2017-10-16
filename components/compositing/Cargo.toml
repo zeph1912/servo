@@ -10,6 +10,7 @@ name = "compositing"
 path = "lib.rs"
 
 [dependencies]
+crossbeam-channel = "0.1"
 euclid = "0.16"
 gfx_traits = {path = "../gfx_traits"}
 gleam = "0.4"

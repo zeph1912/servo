@@ -12,6 +12,7 @@ path = "lib.rs"
 [dependencies]
 base64 = "0.6"
 brotli = "1.0.6"
+crossbeam-channel = "0.1"
 cookie = "0.10"
 devtools_traits = {path = "../devtools_traits"}
 flate2 = "0.2.0"

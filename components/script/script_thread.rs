@@ -19,6 +19,7 @@
 
 use bluetooth_traits::BluetoothRequest;
 use canvas_traits::webgl::WebGLPipeline;
+use crossbeam_channel::{self, Receiver, Sender};
 use devtools;
 use devtools_traits::{DevtoolScriptControlMsg, DevtoolsPageInfo};
 use devtools_traits::{ScriptToDevtoolsControlMsg, WorkerId};
@@ -112,7 +113,6 @@ use std::ptr;
 use std::rc::Rc;
 use std::result::Result;
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Select, Sender, channel};
 use std::thread;
 use style::thread_state::{self, ThreadState};
 use task_source::dom_manipulation::DOMManipulationTaskSource;
@@ -546,9 +546,9 @@ impl ScriptThreadFactory for ScriptThread {
     fn create(state: InitialScriptState,
               load_data: LoadData)
               -> (Sender<message::Msg>, Receiver<message::Msg>) {
-        let (script_chan, script_port) = channel();
+        let (script_chan, script_port) = crossbeam_channel::unbounded();
 
-        let (sender, receiver) = channel();
+        let (sender, receiver) = crossbeam_channel::unbounded();
         let layout_chan = sender.clone();
         thread::Builder::new().name(format!("ScriptThread {:?}", state.id)).spawn(move || {
             thread_state::initialize(ThreadState::SCRIPT);
@@ -810,16 +810,16 @@ impl ScriptThread {
 
         // Ask the router to proxy IPC messages from the devtools to us.
         let (ipc_devtools_sender, ipc_devtools_receiver) = ipc::channel().unwrap();
-        let devtools_port = ROUTER.route_ipc_receiver_to_new_mpsc_receiver(ipc_devtools_receiver);
+        let devtools_port = ROUTER.route_ipc_receiver_to_new_crossbeam_receiver(ipc_devtools_receiver);
 
-        let (timer_event_chan, timer_event_port) = channel();
+        let (timer_event_chan, timer_event_port) = crossbeam_channel::unbounded();
 
         // Ask the router to proxy IPC messages from the control port to us.
-        let control_port = ROUTER.route_ipc_receiver_to_new_mpsc_receiver(state.control_port);
+        let control_port = ROUTER.route_ipc_receiver_to_new_crossbeam_receiver(state.control_port);
 
         let boxed_script_sender = Box::new(MainThreadScriptChan(chan.clone()));
 
-        let (image_cache_channel, image_cache_port) = channel();
+        let (image_cache_channel, image_cache_port) = crossbeam_channel::unbounded();
 
         ScriptThread {
             documents: DomRefCell::new(Documents::new()),
@@ -930,36 +930,14 @@ impl ScriptThread {
 
         // Receive at least one message so we don't spinloop.
         debug!("Waiting for event.");
-        let mut event = {
-            let sel = Select::new();
-            let mut script_port = sel.handle(&self.port);
-            let mut control_port = sel.handle(&self.control_port);
-            let mut timer_event_port = sel.handle(&self.timer_event_port);
-            let mut devtools_port = sel.handle(&self.devtools_port);
-            let mut image_cache_port = sel.handle(&self.image_cache_port);
-            unsafe {
-                script_port.add();
-                control_port.add();
-                timer_event_port.add();
-                if self.devtools_chan.is_some() {
-                    devtools_port.add();
-                }
-                image_cache_port.add();
-            }
-            let ret = sel.wait();
-            if ret == script_port.id() {
-                FromScript(self.port.recv().unwrap())
-            } else if ret == control_port.id() {
-                FromConstellation(self.control_port.recv().unwrap())
-            } else if ret == timer_event_port.id() {
-                FromScheduler(self.timer_event_port.recv().unwrap())
-            } else if ret == devtools_port.id() {
-                FromDevtools(self.devtools_port.recv().unwrap())
-            } else if ret == image_cache_port.id() {
-                FromImageCache(self.image_cache_port.recv().unwrap())
-            } else {
-                panic!("unexpected select result")
-            }
+        let mut event = select_loop! {
+            recv(self.port, msg) => FromScript(msg),
+            recv(self.control_port, msg) => FromConstellation(msg),
+            recv(self.timer_event_port, msg) => FromScheduler(msg),
+            recv(self.devtools_port, msg) if self.devtools_chan.is_some() => FromDevtools(msg),
+            recv(self.image_cache_port, msg) => FromImageCache(msg),
+            // FIXME: https://github.com/crossbeam-rs/crossbeam-channel/issues/6
+            disconnected() => panic!("channels are disconnected in ScriptThread::handle_msgs")
         };
         debug!("Got event.");
 
@@ -1540,7 +1518,7 @@ impl ScriptThread {
             layout_threads,
         } = new_layout_info;
 
-        let layout_pair = channel();
+        let layout_pair = crossbeam_channel::unbounded();
         let layout_chan = layout_pair.0.clone();
 
         let msg = message::Msg::CreateLayoutThread(NewLayoutThreadInfo {
@@ -1873,7 +1851,7 @@ impl ScriptThread {
         // We shut down layout before removing the document,
         // since layout might still be in the middle of laying it out.
         debug!("preparing to shut down layout for page {}", id);
-        let (response_chan, response_port) = channel();
+        let (response_chan, response_port) = crossbeam_channel::unbounded();
         chan.send(message::Msg::PrepareToExit(response_chan)).ok();
         let _ = response_port.recv();
 
@@ -2122,7 +2100,7 @@ impl ScriptThread {
         let HistoryTraversalTaskSource(ref history_sender) = self.history_traversal_task_source;
 
         let (ipc_timer_event_chan, ipc_timer_event_port) = ipc::channel().unwrap();
-        ROUTER.route_ipc_receiver_to_mpsc_sender(ipc_timer_event_port,
+        ROUTER.route_ipc_receiver_to_crossbeam_sender(ipc_timer_event_port,
                                                  self.timer_event_chan.clone());
 
         let origin = if final_url.as_str() == "about:blank" {

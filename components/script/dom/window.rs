@@ -6,6 +6,8 @@ use app_units::Au;
 use base64;
 use bluetooth_traits::BluetoothRequest;
 use canvas_traits::webgl::WebGLChan;
+use crossbeam_channel::{self, Sender};
+use crossbeam_channel::TryRecvError::{Disconnected, Empty};
 use cssparser::{Parser, ParserInput};
 use devtools_traits::{ScriptToDevtoolsControlMsg, TimelineMarker, TimelineMarkerType};
 use dom::bindings::cell::DomRefCell;
@@ -98,8 +100,6 @@ use std::mem;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Sender, channel};
-use std::sync::mpsc::TryRecvError::{Disconnected, Empty};
 use style::media_queries;
 use style::parser::ParserContext as CssParserContext;
 use style::properties::PropertyId;
@@ -349,7 +349,7 @@ impl Window {
     }
 
     pub fn new_script_pair(&self) -> (Box<ScriptChan + Send>, Box<ScriptPort + Send>) {
-        let (tx, rx) = channel();
+        let (tx, rx) = crossbeam_channel::unbounded();
         (Box::new(SendableMainThreadScriptChan(tx)), Box::new(rx))
     }
 
@@ -1223,7 +1223,7 @@ impl Window {
         };
 
         // Layout will let us know when it's done.
-        let (join_chan, join_port) = channel();
+        let (join_chan, join_port) = crossbeam_channel::unbounded();
 
         // On debug mode, print the reflow event information.
         if opts::get().relayout_event {
@@ -1787,7 +1787,7 @@ impl Window {
         webrender_document: DocumentId,
     ) -> DomRoot<Self> {
         let layout_rpc: Box<LayoutRPC + Send> = {
-            let (rpc_send, rpc_recv) = channel();
+            let (rpc_send, rpc_recv) = crossbeam_channel::unbounded();
             layout_chan.send(Msg::GetRPC(rpc_send)).unwrap();
             rpc_recv.recv().unwrap()
         };

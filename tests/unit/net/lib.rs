@@ -5,6 +5,7 @@
 #![cfg(test)]
 
 extern crate cookie as cookie_rs;
+extern crate crossbeam_channel;
 extern crate devtools_traits;
 extern crate flate2;
 extern crate hyper;
@@ -34,6 +35,7 @@ mod mime_classifier;
 mod resource_thread;
 mod subresource_integrity;
 
+use crossbeam_channel::Sender;
 use devtools_traits::DevtoolsControlMsg;
 use hyper::server::{Handler, Listening, Server};
 use net::connector::create_ssl_client;
@@ -47,7 +49,6 @@ use net_traits::response::Response;
 use servo_config::resource_files::resources_dir_path;
 use servo_url::ServoUrl;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Sender, channel};
 
 const DEFAULT_USER_AGENT: &'static str = "Such Browser. Very Layout. Wow.";
 
@@ -82,7 +83,7 @@ fn fetch(request: &mut Request, dc: Option<Sender<DevtoolsControlMsg>>) -> Respo
 }
 
 fn fetch_with_context(request: &mut Request, context: &FetchContext) -> Response {
-    let (sender, receiver) = channel();
+    let (sender, receiver) = crossbeam_channel::unbounded();
     let mut target = FetchResponseCollector {
         sender: sender,
     };
@@ -93,7 +94,7 @@ fn fetch_with_context(request: &mut Request, context: &FetchContext) -> Response
 }
 
 fn fetch_with_cors_cache(request: &mut Request, cache: &mut CorsCache) -> Response {
-    let (sender, receiver) = channel();
+    let (sender, receiver) = crossbeam_channel::unbounded();
     let mut target = FetchResponseCollector {
         sender: sender,
     };

@@ -10,6 +10,7 @@ name = "canvas_traits"
 path = "lib.rs"
 
 [dependencies]
+crossbeam-channel = "0.1"
 cssparser = "0.23.0"
 euclid = "0.16"
 ipc-channel = "0.9"

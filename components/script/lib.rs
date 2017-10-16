@@ -7,7 +7,6 @@
 #![feature(ascii_ctype)]
 #![feature(conservative_impl_trait)]
 #![feature(const_fn)]
-#![feature(mpsc_select)]
 #![feature(plugin)]
 #![feature(proc_macro)]
 #![feature(splice)]
@@ -33,6 +32,7 @@ extern crate canvas_traits;
 extern crate caseless;
 extern crate chrono;
 extern crate cookie as cookie_rs;
+#[macro_use] extern crate crossbeam_channel;
 #[macro_use] extern crate cssparser;
 #[macro_use] extern crate deny_public_fields;
 extern crate devtools_traits;

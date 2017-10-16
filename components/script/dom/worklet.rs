@@ -10,6 +10,7 @@
 //! thread pool implementation, which only performs GC or code loading on
 //! a backup thread, not on the primary worklet thread.
 
+use crossbeam_channel::{self, Sender, Receiver};
 use dom::bindings::codegen::Bindings::RequestBinding::RequestCredentials;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowBinding::WindowMethods;
 use dom::bindings::codegen::Bindings::WorkletBinding::WorkletMethods;
@@ -58,9 +59,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicIsize;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
 use std::thread;
 use style::thread_state::{self, ThreadState};
 use swapper::Swapper;
@@ -308,7 +306,7 @@ impl WorkletThreadPool {
 
     /// For testing.
     pub fn test_worklet_lookup(&self, id: WorkletId, key: String) -> Option<String> {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = crossbeam_channel::unbounded();
         let msg = WorkletData::Task(id, WorkletTask::Test(TestWorkletTask::Lookup(key, sender)));
         let _ = self.primary_sender.send(msg);
         receiver.recv().expect("Test worklet has died?")
@@ -354,7 +352,7 @@ struct WorkletThreadRole {
 
 impl WorkletThreadRole {
     fn new(is_hot_backup: bool, is_cold_backup: bool) -> WorkletThreadRole {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = crossbeam_channel::unbounded();
         WorkletThreadRole {
             sender: sender,
             receiver: receiver,
@@ -418,7 +416,7 @@ impl WorkletThread {
     #[allow(unsafe_code)]
     #[allow(unrooted_must_root)]
     fn spawn(role: WorkletThreadRole, init: WorkletThreadInit) -> Sender<WorkletControl> {
-        let (control_sender, control_receiver) = mpsc::channel();
+        let (control_sender, control_receiver) = crossbeam_channel::unbounded();
         // TODO: name this thread
         thread::spawn(move || {
             // TODO: add a new IN_WORKLET thread state?

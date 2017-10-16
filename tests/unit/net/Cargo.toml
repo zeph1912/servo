@@ -10,6 +10,7 @@ path = "lib.rs"
 doctest = false
 
 [dependencies]
+crossbeam-channel = "0.1"
 cookie = "0.10"
 devtools_traits = {path = "../../../components/devtools_traits"}
 flate2 = "0.2.0"

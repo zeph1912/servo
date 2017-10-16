@@ -104,6 +104,7 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use compositing::SendableFrameTree;
 use compositing::compositor_thread::{CompositorProxy, EmbedderMsg, EmbedderProxy};
 use compositing::compositor_thread::Msg as ToCompositorMsg;
+use crossbeam_channel::{self, Receiver, Sender};
 use debugger;
 use devtools_traits::{ChromeToDevtoolsControlMsg, DevtoolsControlMsg};
 use euclid::{Size2D, TypedSize2D, TypedScale};
@@ -151,7 +152,6 @@ use std::marker::PhantomData;
 use std::process;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use style_traits::CSSPixel;
 use style_traits::cursor::Cursor;
@@ -533,7 +533,7 @@ fn route_ipc_receiver_to_new_mpsc_receiver_preserving_errors<T>(ipc_receiver: Ip
     -> Receiver<Result<T, IpcError>>
     where T: for<'de> Deserialize<'de> + Serialize + Send + 'static
 {
-        let (mpsc_sender, mpsc_receiver) = channel();
+        let (mpsc_sender, mpsc_receiver) = crossbeam_channel::unbounded();
         ROUTER.add_route(ipc_receiver.to_opaque(), Box::new(move |message| {
             drop(mpsc_sender.send(message.to::<T>()))
         }));
@@ -546,7 +546,7 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
 {
     /// Create a new constellation thread.
     pub fn start(state: InitialConstellationState) -> (Sender<FromCompositorMsg>, IpcSender<SWManagerMsg>) {
-        let (compositor_sender, compositor_receiver) = channel();
+        let (compositor_sender, compositor_receiver) = crossbeam_channel::unbounded();
 
         // service worker manager to communicate with constellation
         let (swmanager_sender, swmanager_receiver) = ipc::channel().expect("ipc channel failure");
@@ -559,7 +559,7 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
             let (ipc_layout_sender, ipc_layout_receiver) = ipc::channel().expect("ipc channel failure");
             let layout_receiver = route_ipc_receiver_to_new_mpsc_receiver_preserving_errors(ipc_layout_receiver);
 
-            let (network_listener_sender, network_listener_receiver) = channel();
+            let (network_listener_sender, network_listener_receiver) = crossbeam_channel::unbounded();
 
             let swmanager_receiver = route_ipc_receiver_to_new_mpsc_receiver_preserving_errors(swmanager_receiver);
 
@@ -900,14 +900,14 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
     }
 
     /// Handles loading pages, navigation, and granting access to the compositor
-    #[allow(unsafe_code)]
     fn handle_request(&mut self) {
-        enum Request {
-            Script((PipelineId, FromScriptMsg)),
-            Compositor(FromCompositorMsg),
-            Layout(FromLayoutMsg),
-            NetworkListener((PipelineId, FetchResponseMsg)),
-            FromSWManager(SWManagerMsg),
+        macro_rules! unwrap_or_log {
+            ($result: expr) => {
+                match $result {
+                    Ok(request) => request,
+                    Err(err) => return error!("Deserialization failed ({}).", err),
+                }
+            }
         }
 
         // Get one incoming request.
@@ -921,49 +921,24 @@ impl<Message, LTF, STF> Constellation<Message, LTF, STF>
         // produces undefined behaviour, resulting in the destructor
         // being called. If this happens, there's not much we can do
         // other than panic.
-        let request = {
-            let receiver_from_script = &self.script_receiver;
-            let receiver_from_compositor = &self.compositor_receiver;
-            let receiver_from_layout = &self.layout_receiver;
-            let receiver_from_network_listener = &self.network_listener_receiver;
-            let receiver_from_swmanager = &self.swmanager_receiver;
-            select! {
-                msg = receiver_from_script.recv() =>
-                    msg.expect("Unexpected script channel panic in constellation").map(Request::Script),
-                msg = receiver_from_compositor.recv() =>
-                    Ok(Request::Compositor(msg.expect("Unexpected compositor channel panic in constellation"))),
-                msg = receiver_from_layout.recv() =>
-                    msg.expect("Unexpected layout channel panic in constellation").map(Request::Layout),
-                msg = receiver_from_network_listener.recv() =>
-                    Ok(Request::NetworkListener(
-                        msg.expect("Unexpected network listener channel panic in constellation")
-                    )),
-                msg = receiver_from_swmanager.recv() =>
-                    msg.expect("Unexpected panic channel panic in constellation").map(Request::FromSWManager)
+        select_loop! {
+            recv(self.script_receiver, msg) => {
+                self.handle_request_from_script(unwrap_or_log!(msg))
             }
-        };
-
-        let request = match request {
-            Ok(request) => request,
-            Err(err) => return error!("Deserialization failed ({}).", err),
-        };
-
-        match request {
-            Request::Compositor(message) => {
-                self.handle_request_from_compositor(message)
-            },
-            Request::Script(message) => {
-                self.handle_request_from_script(message);
-            },
-            Request::Layout(message) => {
-                self.handle_request_from_layout(message);
-            },
-            Request::NetworkListener(message) => {
-                self.handle_request_from_network_listener(message);
-            },
-            Request::FromSWManager(message) => {
-                self.handle_request_from_swmanager(message);
+            recv(self.layout_receiver, msg) => {
+                self.handle_request_from_layout(unwrap_or_log!(msg))
             }
+            recv(self.swmanager_receiver, msg) => {
+                self.handle_request_from_swmanager(unwrap_or_log!(msg))
+            }
+            recv(self.compositor_receiver, msg) => {
+                self.handle_request_from_compositor(msg)
+            }
+            recv(self.network_listener_receiver, msg) => {
+                self.handle_request_from_network_listener(msg)
+            }
+            // FIXME: https://github.com/crossbeam-rs/crossbeam-channel/issues/6
+            disconnected() => panic!("channels are disconnected in Constellation::handle_request")
         }
     }
 

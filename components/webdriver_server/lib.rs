@@ -9,6 +9,7 @@
 
 extern crate base64;
 extern crate cookie as cookie_rs;
+extern crate crossbeam_channel;
 extern crate euclid;
 extern crate hyper;
 extern crate image;
@@ -27,6 +28,7 @@ extern crate webdriver;
 
 mod keys;
 
+use crossbeam_channel::Sender;
 use euclid::Size2D;
 use hyper::method::Method::{self, Post};
 use image::{DynamicImage, ImageFormat, RgbImage};
@@ -44,7 +46,6 @@ use servo_url::ServoUrl;
 use std::borrow::ToOwned;
 use std::collections::BTreeMap;
 use std::net::{SocketAddr, SocketAddrV4};
-use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;

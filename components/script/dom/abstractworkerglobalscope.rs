@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crossbeam_channel::{Receiver, Sender};
 use dom::abstractworker::WorkerScriptMsg;
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::DomObject;
 use dom::bindings::trace::JSTraceable;
 use script_runtime::{ScriptChan, CommonScriptMsg, ScriptPort};
-use std::sync::mpsc::{Receiver, Sender};
 
 /// A ScriptChan that can be cloned freely and will silently send a TrustedWorkerAddress with
 /// common event loop messages. While this SendableWorkerScriptChan is alive, the associated

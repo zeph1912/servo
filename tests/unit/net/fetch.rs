@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use {DEFAULT_USER_AGENT, new_fetch_context, fetch, make_server};
-use devtools_traits::DevtoolsControlMsg;
+use crossbeam_channel::{self, Sender};
 use devtools_traits::HttpRequest as DevtoolsHttpRequest;
 use devtools_traits::HttpResponse as DevtoolsHttpResponse;
 use fetch_with_context;
@@ -40,7 +40,6 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{Sender, channel};
 use time::{self, Duration};
 use unicase::UniCase;
 
@@ -766,7 +765,7 @@ fn test_fetch_redirect_updates_method_runner(tx: Sender<bool>, status_code: Stat
 
 #[test]
 fn test_fetch_redirect_updates_method() {
-    let (tx, rx) = channel();
+    let (tx, rx) = crossbeam_channel::unbounded();
 
     test_fetch_redirect_updates_method_runner(tx.clone(), StatusCode::MovedPermanently, Method::Post);
     assert_eq!(rx.recv().unwrap(), true);
@@ -910,7 +909,7 @@ fn test_fetch_with_devtools() {
     let mut request = Request::new(url.clone(), Some(origin), Some(TEST_PIPELINE_ID));
     request.referrer = Referrer::NoReferrer;
 
-    let (devtools_chan, devtools_port) = channel::<DevtoolsControlMsg>();
+    let (devtools_chan, devtools_port) = crossbeam_channel::unbounded();
 
     let _ = fetch(&mut request, Some(devtools_chan));
     let _ = server.close();

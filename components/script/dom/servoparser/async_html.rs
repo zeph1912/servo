@@ -4,6 +4,7 @@
 
 #![allow(unrooted_must_root)]
 
+use crossbeam_channel::{self, Receiver, Sender};
 use dom::bindings::codegen::Bindings::HTMLTemplateElementBinding::HTMLTemplateElementMethods;
 use dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use dom::bindings::inheritance::Castable;
@@ -31,7 +32,6 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use style::context::QuirksMode as ServoQuirksMode;
 
@@ -184,9 +184,9 @@ impl Tokenizer {
             fragment_context: Option<super::FragmentContext>)
             -> Self {
         // Messages from the Tokenizer (main thread) to HtmlTokenizer (parser thread)
-        let (to_html_tokenizer_sender, html_tokenizer_receiver) = channel();
+        let (to_html_tokenizer_sender, html_tokenizer_receiver) = crossbeam_channel::unbounded();
         // Messages from HtmlTokenizer and Sink (parser thread) to Tokenizer (main thread)
-        let (to_tokenizer_sender, tokenizer_receiver) = channel();
+        let (to_tokenizer_sender, tokenizer_receiver) = crossbeam_channel::unbounded();
 
         let mut tokenizer = Tokenizer {
             document: Dom::from_ref(document),

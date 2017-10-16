@@ -6,6 +6,7 @@
 //! Any redirects that are encountered are followed. Whenever a non-redirect
 //! response is received, it is forwarded to the appropriate script thread.
 
+use crossbeam_channel::Sender;
 use hyper::header::Location;
 use ipc_channel::ipc;
 use ipc_channel::router::ROUTER;
@@ -15,7 +16,6 @@ use net_traits::{CoreResourceMsg, FetchChannels, FetchMetadata, FetchResponseMsg
 use net_traits::{IpcSend, NetworkError, ResourceThreads};
 use net_traits::request::{Destination, RequestInit};
 use net_traits::response::ResponseInit;
-use std::sync::mpsc::Sender;
 
 pub struct NetworkListener {
     res_init: Option<ResponseInit>,

@@ -5,6 +5,7 @@
 //! CSS transitions and animations.
 
 use context::LayoutContext;
+use crossbeam_channel::Receiver;
 use flow::{Flow, GetBaseFlow};
 use fnv::FnvHashMap;
 use gfx::display_list::OpaqueNode;
@@ -13,7 +14,6 @@ use msg::constellation_msg::PipelineId;
 use opaque_node::OpaqueNodeMethods;
 use script_traits::{AnimationState, ConstellationControlMsg, LayoutMsg as ConstellationMsg};
 use script_traits::UntrustedNodeAddress;
-use std::sync::mpsc::Receiver;
 use style::animation::{Animation, update_style_for_animation};
 use style::font_metrics::ServoMetricsProvider;
 use style::selector_parser::RestyleDamage;
